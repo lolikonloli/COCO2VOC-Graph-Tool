@@ -1,28 +1,23 @@
-'''
-把coco数据集合的所有标注转换到voc格式，不改变图片命名方式，
-注意，原来有一些图片是黑白照片，检测出不是 RGB 图像，这样的图像不会被放到新的文件夹中
-更新日期：2019-11-19
-'''
 from pycocotools.coco import COCO #这个包可以从git上下载https://github.com/cocodataset/cocoapi/tree/master/PythonAPI，也可以直接用修改后的coco.py
 import  os, cv2, shutil
 from lxml import etree, objectify
 from tqdm import tqdm
 from PIL import Image
- 
-CKimg_dir ='./pidray_voc/images'
-CKanno_dir = './pidray_voc/annotations'
-#若模型保存文件夹不存在，创建模型保存文件夹，若存在，删除重建
-def mkr(path):
-    if os.path.exists(path):
+
+#Pyside2的三个路径
+
+
+def CheckOsPath(path):      #检查文件夹是否已经存在
+    if os.path.exists(path):        #存在，删除
         shutil.rmtree(path)
         os.mkdir(path)
-    else:
+    else:       #不存在，创建
         os.mkdir(path)
- 
- 
-def save_annotations(filename, objs,filepath):
-    annopath = CKanno_dir + "/" + filename[:-3] + "xml" #生成的xml文件保存路径
-    dst_path = CKimg_dir + "/" + filename
+
+
+def save_annotations(filename, objs,filepath, voc_label_dir, voc_image_dir):
+    annopath = voc_label_dir + "/" + filename[:-3] + "xml" #生成的xml文件保存路径
+    dst_path = voc_image_dir + "/" + filename
     img_path=filepath
     img = cv2.imread(img_path)
     im = Image.open(img_path)
@@ -64,11 +59,11 @@ def save_annotations(filename, objs,filepath):
         )
         anno_tree.append(anno_tree2)
     etree.ElementTree(anno_tree).write(annopath, pretty_print=True)
- 
- 
-def showbycv(coco, dataType, img, classes,origin_image_dir,verbose=False):
+
+
+def showbycv(coco, img, classes, SImgFolderPath, voc_label_dir, voc_image_dir):
     filename = img['file_name']
-    filepath=os.path.join(origin_image_dir,dataType,filename)
+    filepath=os.path.join(SImgFolderPath, filename)
     I = cv2.imread(filepath)
     annIds = coco.getAnnIds(imgIds=img['id'],  iscrowd=None)
     anns = coco.loadAnns(annIds)
@@ -83,49 +78,42 @@ def showbycv(coco, dataType, img, classes,origin_image_dir,verbose=False):
             ymax = (int)(bbox[3] + bbox[1])
             obj = [name, 1.0, xmin, ymin, xmax, ymax]
             objs.append(obj)
-            if verbose:
-                cv2.rectangle(I, (xmin, ymin), (xmax, ymax), (255, 0, 0))
-                cv2.putText(I, name, (xmin, ymin), 3, 1, (0, 0, 255))
-    save_annotations(filename, objs,filepath)
-    if verbose:
-        cv2.imshow("img", I)
-        cv2.waitKey(0)
- 
- 
+    save_annotations(filename, objs,filepath, voc_label_dir, voc_image_dir)
+
+
 def catid2name(coco):#将名字和id号建立一个字典
     classes = dict()
     for cat in coco.dataset['categories']:
         classes[cat['id']] = cat['name']
         # print(str(cat['id'])+":"+cat['name'])
     return classes
- 
- 
-def get_CK5(origin_anno_dir,origin_image_dir,verbose=False):
-    dataTypes = ['train']
-    for dataType in dataTypes:
-        #annFile = 'instances_{}.json'.format(dataType)
-        annFile = 'xray_train.json'
-        annpath=os.path.join(origin_anno_dir,annFile)
-        coco = COCO(annpath)
-        classes = catid2name(coco)
-        imgIds = coco.getImgIds()
-        # imgIds=imgIds[0:1000]#测试用，抽取10张图片，看下存储效果
-        for imgId in tqdm(imgIds):
-            img = coco.loadImgs(imgId)[0]
-            showbycv(coco, dataType, img, classes,origin_image_dir,verbose=False)
- 
-def main():
-    base_dir='./pidray_voc'#step1 这里是一个新的文件夹，存放转换后的图片和标注
-    image_dir=os.path.join(base_dir,'images')#在上述文件夹中生成images，annotations两个子文件夹
-    anno_dir=os.path.join(base_dir,'annotations')
-    mkr(image_dir)
-    mkr(anno_dir)
-    origin_image_dir='./pidray'#step 2原始的coco的图像存放位置
-    origin_anno_dir='./pidray/annotations'#step 3 原始的coco的标注存放位置
-    verbose=True #是否需要看下标记是否正确的开关标记，若是true,就会把标记展示到图片上
-    get_CK5(origin_anno_dir,origin_image_dir,verbose)
- 
-if __name__ == "__main__":
-    main()
- 
-    # split_traintest()
+
+
+def get_CK5(SLabelFilePath, SImgFolderPath,voc_label_dir, voc_image_dir):
+    coco = COCO(SLabelFilePath)
+    classes = catid2name(coco)
+    imgIds = coco.getImgIds()
+    # imgIds=imgIds[0:1000]#测试用，抽取10张图片，看下存储效果
+    for imgId in tqdm(imgIds):
+        img = coco.loadImgs(imgId)[0]
+        showbycv(coco, img, classes, SImgFolderPath, voc_label_dir, voc_image_dir)
+
+
+def Transform(SImgFolderPath, SLabelFilePath, TSaveFolderPath):        #转换函数
+    coco2voc_full_dir = os.path.join(TSaveFolderPath, 'COCO2VOC')       #COCO2VOC文件夹位置
+    CheckOsPath(coco2voc_full_dir)      #检查生成路径是否已经存在
+
+    voc_label_dir = os.path.join(coco2voc_full_dir,'annotations')
+    voc_image_dir = os.path.join(coco2voc_full_dir,'images')      #在上述文件夹中生成images，annotations两个子文件夹
+    
+    os.mkdir(voc_label_dir)
+    os.mkdir(voc_image_dir)
+
+
+    get_CK5(SLabelFilePath, SImgFolderPath, voc_label_dir, voc_image_dir)
+
+if __name__ == '__main__':
+    SImgFolderPath = r"E:\Paper-2020-1-lolikonloli\Data\pidray_transform\pidray\train"         #COCO图片文件夹绝对路径
+    SLabelFilePath = r"E:\Paper-2020-1-lolikonloli\Data\pidray_transform\pidray\annotations\xray_train.json"         #COCO标签文件绝对路径
+    TSaveFolderPath = r"E:\Paper-2020-1-lolikonloli\Data\pidray_transform"  
+    Transform(SImgFolderPath, SLabelFilePath, TSaveFolderPath)
